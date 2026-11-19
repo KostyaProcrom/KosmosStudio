@@ -10,6 +10,6 @@
    ========================================================= */
 
 window.KOSMOS_CONFIG = {
-  SUPABASE_URL: "",
-  SUPABASE_ANON_KEY: "",
+  SUPABASE_URL: "https://ugrybmbvlessdxhmwvrj.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_pSiu3D0oOeg7qa_aH6gYUA_bxF5gTJv",
 };
