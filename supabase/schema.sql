@@ -145,6 +145,12 @@ from auth.users u
 where not exists (select 1 from public.profiles p where p.id = u.id)
 on conflict do nothing;
 
+-- Если профиль владельца уже существовал до появления роли — поднимаем её.
+update public.profiles
+set role = 'Владелец студии'
+where lower(username) = 'kostyakosmos'
+  and role <> 'Владелец студии';
+
 -- ---------- Проверка свободного ника ----------
 
 create or replace function public.username_available(candidate text)
