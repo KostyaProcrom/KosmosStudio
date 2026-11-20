@@ -374,6 +374,7 @@
       </div>
 
       <form class="auth-form" id="loginForm" novalidate>
+        <p class="auth-hint">Вход по email, указанному при регистрации.</p>
         <div class="field">
           <label for="loginEmail">Email</label>
           <input id="loginEmail" type="email" autocomplete="email" placeholder="you@example.com" required />
@@ -430,6 +431,7 @@
       </form>
 
       <p class="form-msg" id="authMessage" role="status" aria-live="polite"></p>
+      <button class="auth-link auth-resend" id="resendConfirm" type="button" hidden>Отправить письмо ещё раз</button>
       <p class="modal__note">Пароль хранится в зашифрованном виде. Данные — в базе Supabase.</p>
     </div>
   </dialog>
@@ -450,7 +452,7 @@
       </div>
 
       <dl class="profile-meta">
-        <div><dt>Статус</dt><dd>Участник</dd></div>
+        <div><dt>Статус</dt><dd id="profileRole">Участник</dd></div>
         <div><dt>На сайте с</dt><dd id="profileSince">—</dd></div>
       </dl>
 

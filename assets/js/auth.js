@@ -19,6 +19,7 @@ const ui = {
 
   authDialog: $("authDialog"),
   authMessage: $("authMessage"),
+  resendConfirm: $("resendConfirm"),
   tabsWrap: $("authTabs"),
   loginForm: $("loginForm"),
   registerForm: $("registerForm"),
@@ -40,6 +41,7 @@ const ui = {
   profileAvatar: $("profileAvatar"),
   profileName: $("profileName"),
   profileEmail: $("profileEmail"),
+  profileRole: $("profileRole"),
   profileSince: $("profileSince"),
   nicknameForm: $("nicknameForm"),
   nicknameInput: $("nicknameInput"),
@@ -51,6 +53,7 @@ let supabase = null;
 let currentUser = null;
 let currentProfile = null;
 let lastFocus = null;
+let pendingConfirmEmail = "";
 
 /* ---------- helpers ---------- */
 
@@ -77,6 +80,16 @@ const setMessage = (node, text, type = "") => {
 
 const clearMessage = () => setMessage(ui.authMessage, "");
 
+const showResend = (email) => {
+  pendingConfirmEmail = email;
+  if (ui.resendConfirm) ui.resendConfirm.hidden = false;
+};
+
+const hideResend = () => {
+  pendingConfirmEmail = "";
+  if (ui.resendConfirm) ui.resendConfirm.hidden = true;
+};
+
 const initialOf = (name) => (name || "K").trim().charAt(0).toUpperCase();
 
 const mapError = (error) => {
@@ -84,21 +97,19 @@ const mapError = (error) => {
   const code = String(error?.code || "");
 
   if (message.includes("invalid login credentials")) return "Неверный email или пароль.";
-  if (message.includes("email not confirmed")) return "Подтвердите почту: мы отправили письмо со ссылкой.";
+  if (message.includes("email not confirmed")) return "Подтвердите почту — письмо уже отправлено. Проверьте «Спам».";
   if (message.includes("user already registered")) return "Аккаунт с таким email уже существует.";
   if (message.includes("password should be at least")) return "Пароль должен быть не короче 6 символов.";
   if (message.includes("unable to validate email") || message.includes("invalid email")) return "Проверьте адрес почты.";
+  if (message.includes("for security purposes")) return "Письмо уже отправлено. Повторите через минуту.";
   if (message.includes("rate limit") || message.includes("too many")) return "Слишком много попыток. Попробуйте позже.";
   if (message.includes("signup is disabled")) return "Регистрация временно недоступна.";
   if (message.includes("database error saving new user")) return "Этот ник уже занят — выберите другой.";
   if (message.includes("auth session missing")) return "Сессия истекла. Войдите заново.";
+  if (message.includes("user not found")) return "Аккаунт с таким email не найден.";
+  if (message.includes("not authorized")) return "Письмо не отправилось: проверьте настройки почты в Supabase.";
   if (code === "23505") return "Этот ник уже занят — выберите другой.";
   return "Что-то пошло не так. Попробуйте ещё раз.";
-};
-
-const describeProfileError = (error) => {
-  console.warn("[auth]", error);
-  return "Не удалось загрузить профиль. Проверьте, что SQL из supabase/schema.sql выполнен.";
 };
 
 /* ---------- modal plumbing ---------- */
@@ -146,6 +157,7 @@ function setTab(mode) {
     if (form) form.hidden = key !== mode;
   });
 
+  hideResend();
   clearMessage();
 }
 
@@ -198,13 +210,14 @@ async function syncSession(session) {
   const fallbackName = currentUser.user_metadata?.username || emailPrefix(currentUser.email);
   currentProfile = {
     username: fallbackName,
+    role: "Участник",
     created_at: currentUser.created_at,
   };
   renderLoggedIn(fallbackName);
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("username, created_at")
+    .select("username, role, created_at")
     .eq("id", currentUser.id)
     .maybeSingle();
 
@@ -229,6 +242,7 @@ function fillProfile() {
   if (ui.profileAvatar) ui.profileAvatar.textContent = initialOf(username);
   if (ui.profileName) ui.profileName.textContent = username;
   if (ui.profileEmail) ui.profileEmail.textContent = currentUser.email || "";
+  if (ui.profileRole) ui.profileRole.textContent = currentProfile?.role || "Участник";
   if (ui.profileSince) ui.profileSince.textContent = formatDate(currentUser.created_at);
   if (ui.nicknameInput) ui.nicknameInput.value = username;
 
@@ -263,9 +277,13 @@ async function handleLogin(event) {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       setMessage(ui.authMessage, mapError(error), "error");
+      if (String(error.message || "").toLowerCase().includes("email not confirmed")) {
+        showResend(email);
+      }
       return;
     }
     ui.loginForm.reset();
+    hideResend();
     setMessage(ui.authMessage, "");
     closeDialog(ui.authDialog);
   } finally {
@@ -323,18 +341,45 @@ async function handleRegister(event) {
     ui.registerForm.reset();
 
     if (data.session) {
+      hideResend();
       setMessage(ui.authMessage, "Аккаунт создан. Добро пожаловать!", "success");
       closeDialog(ui.authDialog);
       return;
     }
 
+    showResend(email);
     setMessage(
       ui.authMessage,
-      `Аккаунт создан. Подтвердите почту: письмо отправлено на ${email}.`,
+      `Аккаунт создан. Подтвердите почту: письмо отправлено на ${email}. Если его нет — проверьте «Спам».`,
       "success"
     );
   } finally {
     button.disabled = false;
+  }
+}
+
+async function handleResend(event) {
+  event.preventDefault();
+  if (!pendingConfirmEmail) return;
+
+  const email = pendingConfirmEmail;
+  ui.resendConfirm.disabled = true;
+
+  try {
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: REDIRECT_URL },
+    });
+
+    if (error) {
+      setMessage(ui.authMessage, mapError(error), "error");
+      return;
+    }
+
+    setMessage(ui.authMessage, `Письмо отправлено повторно на ${email}.`, "success");
+  } finally {
+    ui.resendConfirm.disabled = false;
   }
 }
 
@@ -463,6 +508,8 @@ function wireEvents() {
     event.preventDefault();
     setTab("reset");
   });
+
+  ui.resendConfirm?.addEventListener("click", handleResend);
 
   $("backToLogin")?.addEventListener("click", (event) => {
     event.preventDefault();

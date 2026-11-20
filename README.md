@@ -43,15 +43,30 @@ Postgres. Пока `assets/js/config.js` пуст, кнопка «Войти» �
    };
    ```
 
-5. В **Authentication → URL Configuration** укажите Site URL
-   (`https://kostyaprocrom.github.io/KosmosStudio/`) и добавьте его же
-   в Redirect URLs — это нужно для подтверждения почты и сброса пароля.
+5. В **Authentication → URL Configuration** обязательно укажите:
+   - **Site URL:** `https://kostyaprocrom.github.io/KosmosStudio/`
+   - **Redirect URLs:** `https://kostyaprocrom.github.io/KosmosStudio/`
+
+   Без этого ссылка из письма ведёт на `http://localhost:3000`, и вход
+   после регистрации не работает.
 6. Закоммитьте `config.js` и запушьте — на GitHub Pages появятся
    регистрация и вход.
 
 `anon key` публичный: доступ к строкам ограничен RLS-политиками, пароли
 хранит Supabase Auth в зашифрованном виде. Ник уникален без учёта
-регистра и хранится в таблице `profiles`.
+регистра и хранится в таблице `profiles`. Ник `KostyaKosmos` получает
+статус «Владелец студии», остальные — «Участник».
+
+### Если вход не работает
+
+- **«Подтвердите почту»** — откройте письмо и перейдите по ссылке.
+  Если письма нет, проверьте «Спам» или нажмите «Отправить письмо ещё раз»
+  в окне входа.
+- **Ссылка ведёт на localhost** — не заполнены Site URL и Redirect URLs
+  (см. шаг 5 выше).
+- **Профиль не загружается** — не выполнен `supabase/schema.sql`.
+- Хотите входить сразу после регистрации — выключите
+  **Authentication → Providers → Email → Confirm email**.
 
 ## Как добавить проект
 

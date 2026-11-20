@@ -5,10 +5,11 @@
 --  Скрипт можно запускать повторно: он не удаляет данные.
 --
 --  Что создаётся:
---    • public.profiles — публичные профили (ник, даты)
+--    • public.profiles — публичные профили (ник, роль, даты)
 --    • RLS-политики: читать и менять можно только свой профиль
 --    • уникальный ник без учёта регистра
 --    • триггер: профиль создаётся автоматически при регистрации
+--    • ник KostyaKosmos получает роль «Владелец студии»
 --    • функция username_available() для проверки ника до регистрации
 -- =========================================================
 
@@ -17,12 +18,21 @@
 create table if not exists public.profiles (
   id         uuid primary key references auth.users (id) on delete cascade,
   username   text not null,
+  role       text not null default 'Участник',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
 
   constraint profiles_username_length check (char_length(username) between 3 and 24),
   constraint profiles_username_format check (username ~ '^[A-Za-zА-Яа-яЁё0-9_-]+$')
 );
+
+-- Для проектов, где таблица была создана до появления роли.
+alter table public.profiles
+  add column if not exists role text not null default 'Участник';
+
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles
+  add constraint profiles_role_check check (role in ('Участник', 'Владелец студии'));
 
 -- Ник уникален без учёта регистра: Kosmos и kosmos — один и тот же ник.
 create unique index if not exists profiles_username_lower_key
@@ -94,8 +104,15 @@ begin
 
   -- Ник из формы регистрации. Если он занят, сработает уникальный индекс,
   -- и Supabase вернёт ошибку — клиент покажет «ник уже занят».
-  insert into public.profiles (id, username)
-  values (new.id, left(desired_name, 24))
+  insert into public.profiles (id, username, role)
+  values (
+    new.id,
+    left(desired_name, 24),
+    case
+      when lower(left(desired_name, 24)) = 'kostyakosmos' then 'Владелец студии'
+      else 'Участник'
+    end
+  )
   on conflict (id) do nothing;
 
   return new;
@@ -106,6 +123,27 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- Профили для аккаунтов, созданных до выполнения этого скрипта.
+insert into public.profiles (id, username, role)
+select
+  u.id,
+  left(
+    case
+      when char_length(coalesce(nullif(trim(u.raw_user_meta_data ->> 'username'), ''), '')) >= 3
+        then trim(u.raw_user_meta_data ->> 'username')
+      else 'player_' || left(u.id::text, 4)
+    end,
+    24
+  ),
+  case
+    when lower(coalesce(nullif(trim(u.raw_user_meta_data ->> 'username'), ''), '')) = 'kostyakosmos'
+      then 'Владелец студии'
+    else 'Участник'
+  end
+from auth.users u
+where not exists (select 1 from public.profiles p where p.id = u.id)
+on conflict do nothing;
 
 -- ---------- Проверка свободного ника ----------
 
@@ -127,8 +165,11 @@ revoke all on function public.username_available(text) from public;
 grant execute on function public.username_available(text) to anon, authenticated;
 
 -- ---------- Права доступа ----------
+-- Ник можно менять, роль — только через SQL Editor / service_role.
 
-grant select, update on public.profiles to authenticated;
+grant select on public.profiles to authenticated;
+revoke update on public.profiles from anon, authenticated;
+grant update (username) on public.profiles to authenticated;
 
 -- =========================================================
 --  Готово. Теперь скопируйте Project URL и anon key
