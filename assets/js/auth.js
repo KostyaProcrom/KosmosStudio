@@ -102,6 +102,9 @@ const mapError = (error) => {
   if (message.includes("password should be at least")) return "Пароль должен быть не короче 6 символов.";
   if (message.includes("unable to validate email") || message.includes("invalid email")) return "Проверьте адрес почты.";
   if (message.includes("for security purposes")) return "Письмо уже отправлено. Повторите через минуту.";
+  if (message.includes("email rate limit") || code.includes("over_email_send_rate_limit")) {
+    return "Лимит писем Supabase исчерпан: письма временно не уходят. Подождите около часа или отключите «Confirm email» в Supabase.";
+  }
   if (message.includes("rate limit") || message.includes("too many")) return "Слишком много попыток. Попробуйте позже.";
   if (message.includes("signup is disabled")) return "Регистрация временно недоступна.";
   if (message.includes("database error saving new user")) return "Этот ник уже занят — выберите другой.";
